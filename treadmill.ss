@@ -8,7 +8,8 @@
         :std/sort
         :std/srfi/1
         :std/sugar
-        :thunknyc/apropos)
+        :thunknyc/apropos
+        :drewc/repl-history)
 
 (export start-treadmill!
         eval-string/input-string
@@ -41,6 +42,21 @@
      (let (result (eval 'form))
        (printf "~S<<~A|\n" result sentinel)))))
 
+(def (eval-and-add-history expression (module #f))
+  (try
+   (let (result
+         (if module
+           (parameterize
+               ((current-expander-allow-rebind? #t)
+                (gx#current-expander-context (module-context module)))
+             (eval expression))
+           (eval expression)))
+     (repl-history% 'add! expression result)
+     result)
+   (catch (e)
+     (eprintf "Message: ~A\n"
+              (error-message e)))))
+
 (def (eval/input e p (mod #f))
   (let ((out (open-output-string))
         (err (open-output-string)))
@@ -48,18 +64,7 @@
                    (current-output-port out)
                    (current-error-port err))
       (let (result
-            (call-with-values
-                (lambda ()
-                  (try
-                   (if mod
-                     (parameterize
-                         ((current-expander-allow-rebind? #t)
-                          (gx#current-expander-context (module-context mod)))
-                       (eval e))
-                     (eval e))
-                   (catch (e)
-                     (eprintf "Message: ~A\n"
-                              (error-message e)))))
+            (call-with-values (lambda () (eval-and-add-history e mod))
               (lambda vals vals)))
         `(,result
           ,(get-output-string out)
